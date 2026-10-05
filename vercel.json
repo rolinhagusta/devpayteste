@@ -1,4 +1,14 @@
 {
   "framework": null,
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ]
 }
