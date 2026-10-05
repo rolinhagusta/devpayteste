@@ -3,11 +3,13 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { buscarLeads } = require('./leads');
+const { buscarLeadsOSM } = require('./leads-osm');
 
 const {
   ASAAS_API_KEY, ASAAS_ENV, ASAAS_WEBHOOK_TOKEN,
   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ALLOWED_ORIGIN,
-  PIX_TTL_MINUTES = 30,
+  PIX_TTL_MINUTES = 30, GOOGLE_MAPS_API_KEY, LEADS_MAX_CALLS = 40, LEADS_PROVIDER,
 } = process.env;
 const missing = ['ASAAS_API_KEY', 'ASAAS_WEBHOOK_TOKEN', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].filter((k) => !process.env[k]);
 
@@ -19,7 +21,7 @@ const PLANS = { Starter: { m: 97, a: 79 }, Pro: { m: 247, a: 197 }, Agency: { m:
 
 const app = express();
 const keyRole = (() => { try { return JSON.parse(Buffer.from(String(SUPABASE_SERVICE_ROLE_KEY).split('.')[1], 'base64url').toString()).role; } catch { return 'desconhecido'; } })();
-app.get('/api/health', (req, res) => res.json({ ok: !missing.length && keyRole !== 'anon', missing, key_role: keyRole, aviso: keyRole === 'anon' ? 'SUPABASE_SERVICE_ROLE_KEY está com a chave ANON. Troque pela service_role.' : undefined }));
+app.get('/api/health', (req, res) => res.json({ ok: !missing.length && keyRole !== 'anon', missing, google: !!GOOGLE_MAPS_API_KEY, key_role: keyRole, aviso: keyRole === 'anon' ? 'SUPABASE_SERVICE_ROLE_KEY está com a chave ANON. Troque pela service_role.' : undefined }));
 if (missing.length) app.use((req, res) => res.status(500).send('Faltam variáveis de ambiente: ' + missing.join(', ')));
 if (ALLOWED_ORIGIN) app.use('/api', (req, res, next) => {
   res.set({ 'Access-Control-Allow-Origin': ALLOWED_ORIGIN, 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'POST, OPTIONS' });
@@ -198,6 +200,22 @@ app.post('/api/webhooks/payment', express.json(), async (req, res) => {
     if (p.kind === 'sale') await payoutSeller(p, payment).catch((e) => console.error('payout', e));
     res.sendStatus(200);
   } catch (e) { console.error('webhook', e); res.sendStatus(500); }
+});
+
+/* ========== POST /api/leads (Google Maps com chave; senão OpenStreetMap grátis) ========== */
+app.post('/api/leads', express.json(), async (req, res) => {
+  try {
+    await authUser(req); // só usuário logado gasta a chave do Google
+    const b = req.body || {};
+    const q = { nicho: b.nicho, cidade: b.cidade, sinonimos: b.sinonimos, semSite: !!b.semSite, profundo: !!b.profundo };
+    // Google se houver chave (e não for forçado "osm"); senão usa o mapa livre (grátis)
+    if (GOOGLE_MAPS_API_KEY && LEADS_PROVIDER !== 'osm') {
+      res.json({ ...(await buscarLeads(q, { apiKey: GOOGLE_MAPS_API_KEY, maxCalls: Number(LEADS_MAX_CALLS) || 40 })), fonte: 'google' });
+    } else res.json(await buscarLeadsOSM(q));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.code || 'server_error', message: e.status ? e.message : 'Erro interno' });
+    if (!e.status) console.error(e);
+  }
 });
 
 module.exports = app;
