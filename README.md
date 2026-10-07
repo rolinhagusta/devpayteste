@@ -37,3 +37,5 @@ Usa OpenStreetMap (grátis, sem chave). Busque no formato "Cidade, UF" e use sin
 ## Gerar site (IA)
 No Radar, abra um lead e toque em "✦ Gerar site": cole o prompt e a IA cria o site da empresa (usa nome, nicho, cidade, telefone). Depois é só baixar o HTML.
 Backend: `sitegen.js` + rota `/api/site/generate` (streaming). Usa `GEMINI_API_KEY` (grátis) se existir; senão `ANTHROPIC_API_KEY`. Limite da função: 60 s (vercel.json).
+
+
